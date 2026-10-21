@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en" style="background-color: #020617; color: #f8fafc; height: 100%;">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>SafeLink Women Safety</title>
+    <meta name="description" content="A reliable, high-fidelity women's safety application with real-time location tracking, rapid SOS alerts, audio recording, voice triggers, panic gestures, offline mode, and discreet stealth decoy interface." />
+    <meta property="og:title" content="SafeLink Women Safety" />
+    <meta property="og:description" content="A reliable, high-fidelity women's safety application with real-time location tracking, rapid SOS alerts, audio recording, voice triggers, panic gestures, offline mode, and discreet stealth decoy interface." />
+    
+    <!-- Android & PWA Metadata -->
+    <meta name="theme-color" content="#020617" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="SafeLink" />
+    <meta name="application-name" content="SafeLink" />
+    <meta name="format-detection" content="telephone=no" />
+    
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="icon" type="image/svg+xml" href="/icon-192.svg" />
+    <link rel="apple-touch-icon" href="/icon-192.svg" />
+    
+    <!-- Preconnect & asynchronous font loading to eliminate render blocking -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" media="print" onload="this.media='all'" />
+    <noscript>
+      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" />
+    </noscript>
+    <style>
+      html, body {
+        background-color: #020617 !important;
+        color: #f8fafc !important;
+        margin: 0;
+        padding: 0;
+        min-height: 100%;
+      }
+      @keyframes safelink-pulse {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.6; transform: scale(0.97); }
+      }
+      @keyframes safelink-spin {
+        to { transform: rotate(360deg); }
+      }
+    </style>
+  </head>
+  <body class="bg-slate-950 text-slate-100 antialiased selection:bg-red-500/30 selection:text-red-200">
+    <div id="root">
+      <!-- Lightweight Dark Fallback & Loader to completely prevent white screen flicker -->
+      <div id="initial-loading-view" style="min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; background-color: #020617; color: #f8fafc; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; text-align: center; padding: 24px; box-sizing: border-box;">
+        <div style="width: 52px; height: 52px; border-radius: 16px; background: linear-gradient(135deg, #dc2626, #f43f5e); display: flex; align-items: center; justify-content: center; margin-bottom: 20px; box-shadow: 0 10px 25px -5px rgba(220, 38, 38, 0.4); animation: safelink-pulse 2s infinite ease-in-out;">
+          <svg style="width: 28px; height: 28px; fill: #020617;" viewBox="0 0 24 24">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+        </div>
+        <div style="font-weight: 800; font-size: 18px; letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 6px; color: #f1f5f9;">SafeLink</div>
+        <div style="font-size: 12px; color: #94a3b8; max-width: 260px; line-height: 1.5; margin-bottom: 24px;">Women's Safety & GPS Dispatcher</div>
+        <div style="width: 32px; height: 32px; border-radius: 50%; border: 3px solid rgba(239, 68, 68, 0.2); border-top-color: #ef4444; animation: safelink-spin 0.8s linear infinite;"></div>
+      </div>
+    </div>
+    
+    <script>
+      // Safe cross-origin iframe detection: iframes should not register service workers,
+      // while standalone browser/PWA instances on deployed domain register for offline emergency protection.
+      try {
+        var isIframe = false;
+        try {
+          isIframe = window.self !== window.top;
+        } catch (crossOriginErr) {
+          isIframe = true;
+        }
+
+        if ('serviceWorker' in navigator) {
+          if (isIframe) {
+            navigator.serviceWorker.getRegistrations().then(function(registrations) {
+              for (var i = 0; i < registrations.length; i++) {
+                registrations[i].unregister();
+              }
+            }).catch(function() {});
+          } else {
+            window.addEventListener('load', function() {
+              navigator.serviceWorker.register('/sw.js').catch(function(err) {
+                console.warn('SW registration skipped:', err);
+              });
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('Service worker setup notice:', err);
+      }
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

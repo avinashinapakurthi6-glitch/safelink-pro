@@ -1,0 +1,72 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Secure SafeLink user configurations and historical records.",
+      "type": "object",
+      "properties": {
+        "contacts": { "type": "array", "description": "Guard Circle emergency contacts list." },
+        "settings": { "type": "object", "description": "SafeLink customizable application settings." },
+        "locationLogs": { "type": "array", "description": "Cached route tracking logs." },
+        "ngos": { "type": "array", "description": "Custom NGO dispatch listings." },
+        "policeStations": { "type": "array", "description": "Custom Police Station lists." },
+        "audioRecords": { "type": "array", "description": "Secure voice recordings of incident logs." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Timestamp of the last profile sync." }
+      },
+      "required": ["updatedAt"]
+    },
+    "LiveSOS": {
+      "title": "LiveSOS",
+      "description": "Real-time active or completed emergency tracking session.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "User UID who triggered the SOS." },
+        "userName": { "type": "string", "description": "User profile name or alias." },
+        "latitude": { "type": "number", "description": "Current latitude decimal coordinate." },
+        "longitude": { "type": "number", "description": "Current longitude decimal coordinate." },
+        "accuracy": { "type": "number", "description": "Satellite positioning accuracy radius." },
+        "reason": { "type": "string", "description": "User specified reason for triggering SOS." },
+        "timestamp": { "type": "string", "description": "Trigger local clock time." },
+        "logs": { "type": "array", "description": "Incidents and automated carrier gateway dispatch logs." },
+        "active": { "type": "boolean", "description": "Whether tracking stream is currently live." },
+        "lastUpdated": { "type": "string", "format": "date-time", "description": "UTC timestamp of last satellite ping." },
+        "endedAt": { "type": "string", "format": "date-time", "description": "UTC timestamp when tracking ended." }
+      },
+      "required": ["userId", "latitude", "longitude", "accuracy", "lastUpdated"]
+    },
+    "CommunityAlert": {
+      "title": "CommunityAlert",
+      "description": "Real-time community-reported incident alert to notify other nearby users.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "User UID who posted the alert." },
+        "userName": { "type": "string", "description": "User name or 'Anonymous'." },
+        "incidentType": { "type": "string", "description": "Type of safety incident." },
+        "title": { "type": "string", "description": "Alert header title." },
+        "description": { "type": "string", "description": "A brief description of what happened." },
+        "latitude": { "type": "number", "description": "Latitude coordinate of incident." },
+        "longitude": { "type": "number", "description": "Longitude coordinate of incident." },
+        "severity": { "type": "string", "description": "Severity scale (low, medium, high)." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "UTC ISO timestamp when created." },
+        "active": { "type": "boolean", "description": "True if incident is active/ongoing." },
+        "upvotes": { "type": "array", "description": "List of user UIDs validating this alert." },
+        "isAnonymous": { "type": "boolean", "description": "True if post was made anonymously." }
+      },
+      "required": ["userId", "userName", "incidentType", "title", "latitude", "longitude", "severity", "createdAt", "active", "upvotes"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "User profile document isolated securely per authenticated user UID."
+    },
+    "live_sos/{sessionId}": {
+      "schema": "LiveSOS",
+      "description": "Shared tracking rooms accessible publicly via secure UUID token."
+    },
+    "community_alerts/{alertId}": {
+      "schema": "CommunityAlert",
+      "description": "Community incident reports accessible in real-time by all safe link users."
+    }
+  }
+}

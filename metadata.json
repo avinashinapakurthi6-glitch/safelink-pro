@@ -1,0 +1,9 @@
+{
+  "name": "SafeLink Women Safety",
+  "description": "A reliable, high-fidelity women's safety application with real-time location tracking, rapid SOS alerts, audio recording, voice triggers, panic gestures, offline mode, and discreet stealth decoy interface.",
+  "requestFramePermissions": [
+    "microphone",
+    "geolocation"
+  ],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

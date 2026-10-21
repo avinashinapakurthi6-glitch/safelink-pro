@@ -1,0 +1,54 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Catch-all default deny to enforce Zero-Trust posture
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Standard helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Rules for individual user profile documents (configurations, contacts, settings, audio records)
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // Rules for live emergency tracking sessions
+    match /live_sos/{sessionId} {
+      // Allows any recipient with the secure UUID to view real-time location stream
+      allow get: if true;
+      
+      // Prevent bulk querying or scanning active emergency rooms
+      allow list: if false;
+      
+      // Permit creation of new session documents by authenticated users or guest fallback
+      allow create: if isSignedIn() || request.resource.data.userId == 'guest-user';
+      
+      // Permit location & logs update during active tracking by session initiator
+      allow update: if isSignedIn() || resource.data.userId == 'guest-user';
+    }
+
+    // Rules for community-wide alerts
+    match /community_alerts/{alertId} {
+      // Allow any user to read/list community alerts to keep the community updated
+      allow read, list: if true;
+      
+      // Permit creation of alerts by signed-in or simulated guest users
+      allow create: if isSignedIn() || request.resource.data.userId == 'guest-user';
+      
+      // Permit updates (like upvoting or resolving)
+      allow update: if isSignedIn() || request.resource.data.userId == 'guest-user';
+
+      // Permit deletion only by the creator
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+  }
+}

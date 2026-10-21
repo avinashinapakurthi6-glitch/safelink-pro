@@ -1,0 +1,57 @@
+{
+  "name": "SafeLink Women Safety SOS",
+  "short_name": "SafeLink",
+  "description": "Rapid women's safety SOS, live GPS location tracking, panic triggers, and emergency dispatch.",
+  "start_url": "/",
+  "id": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#020617",
+  "theme_color": "#020617",
+  "categories": ["lifestyle", "security", "utilities"],
+  "icons": [
+    {
+      "src": "/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "🚨 Quick SOS Trigger",
+      "short_name": "SOS",
+      "description": "Instantly broadcast emergency SOS with live GPS location",
+      "url": "/?trigger=sos",
+      "icons": [{ "src": "/icon-192.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "🧭 Transit Live Tracking",
+      "short_name": "Transit",
+      "description": "Start active real-time GPS breadcrumb tracking",
+      "url": "/?tab=dashboard",
+      "icons": [{ "src": "/icon-192.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "🛡️ Decoy Stealth Screen",
+      "short_name": "Decoy",
+      "description": "Discreet disguise interface",
+      "url": "/?stealth=1",
+      "icons": [{ "src": "/icon-192.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "📞 Fake Call Escape",
+      "short_name": "Fake Call",
+      "description": "Trigger discreet incoming escape call",
+      "url": "/?fakecall=1",
+      "icons": [{ "src": "/icon-192.svg", "sizes": "192x192" }]
+    }
+  ]
+}
