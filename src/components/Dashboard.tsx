@@ -601,7 +601,6 @@ export default function Dashboard({
                   <iframe
                     title="Live Breadcrumb Map"
                     src={getOsmMapUrl(currentCoords.lat, currentCoords.lng, mapZoom)}
-                    loading="lazy"
                     className="absolute inset-0 w-full h-full border-0 transition-all duration-300"
                     style={{
                       filter: useDarkMap 
@@ -659,12 +658,7 @@ export default function Dashboard({
                   {contacts.filter(c => c.isActive && c.phone).map((c) => (
                     <a
                       key={c.id}
-                      href={getSmsUrl(
-                        c.phone,
-                        activeSOSSessionId
-                          ? `🚨 EMERGENCY SOS ALERT: I need urgent help! Track my continuous live location in real time: ${typeof window !== 'undefined' ? window.location.origin + window.location.pathname : ''}?shareSOS=${activeSOSSessionId}`
-                          : `SOS! I feel unsafe. My live coords: https://www.google.com/maps?q=${currentCoords?.lat || '0'},${currentCoords?.lng || '0'}`
-                      )}
+                      href={getSmsUrl(c.phone, `SOS! I feel unsafe. My live coords: https://www.google.com/maps?q=${currentCoords?.lat || '0'},${currentCoords?.lng || '0'}`)}
                       className="px-3 py-1.5 bg-amber-500 text-slate-950 text-[10px] font-extrabold rounded-lg hover:bg-amber-400 transition flex items-center gap-1 shadow-md"
                     >
                       <span>Text {c.name}</span>

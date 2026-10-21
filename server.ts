@@ -31,27 +31,6 @@ app.get('/api/health', (_req, res) => {
   res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Zero-permission instant location fallback for immediate emergency live streaming
-app.get('/api/locate', (req, res) => {
-  const geoHeader = req.headers['x-appengine-citylatlong'];
-  if (typeof geoHeader === 'string') {
-    const [latStr, lngStr] = geoHeader.split(',');
-    const lat = parseFloat(latStr);
-    const lng = parseFloat(lngStr);
-    if (!isNaN(lat) && !isNaN(lng)) {
-      return res.json({ lat, lng, source: 'edge-network', accuracy: 500 });
-    }
-  }
-  // Graceful fallback coordinate so emergency SOS broadcasts immediately with zero permissions
-  res.json({
-    lat: 17.6868,
-    lng: 83.2185,
-    source: 'regional-anchor',
-    accuracy: 1000,
-    timestamp: new Date().toISOString()
-  });
-});
-
 // Shared Gemini client utility with User-Agent required for AI Studio telemetry
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,

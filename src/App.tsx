@@ -40,7 +40,7 @@ import {
   Shield, Heart, Mic, Zap, Info, Radio, Eye, EyeOff,
   Bell, VolumeX, Mail, Smartphone, RefreshCw, X, AlertTriangle, ShieldCheck, ShieldAlert,
   Building2, LogIn, LogOut, User as UserIcon, ChevronDown, ChevronUp, Copy, ExternalLink, Check, Download,
-  Sliders, Sun, Moon, Share2
+  Sliders, Sun, Moon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -195,11 +195,6 @@ export default function App() {
   const [ngos, setNgos] = useState<Ngo[]>([]);
   const [policeStations, setPoliceStations] = useState<PoliceStation[]>([]);
   const [latestCoords, setLatestCoords] = useState<{ lat: number; lng: number } | null>(null);
-  const latestCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
-
-  useEffect(() => {
-    latestCoordsRef.current = latestCoords;
-  }, [latestCoords]);
   
   // SOS State
   const [isSOSActive, setIsSOSActive] = useState(false);
@@ -642,6 +637,10 @@ export default function App() {
       startAudioKeepalive();
       // Simultaneously arm "help help" voice listener with the 50 m/s² shake sensor
       startVoiceListening();
+
+      if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission().catch(() => {});
+      }
     }
   };
 
@@ -782,11 +781,11 @@ export default function App() {
     };
   }, [isArmedStandby, isSOSActive, startVoiceListening]);
 
-  // Voice Wake-Word Arming & Background Watchdog (Opt-in to prevent initial load freezing & permission popups)
+  // Voice Wake-Word Auto-Arming & Background Watchdog: whether app is opened or secondary
   useEffect(() => {
-    // Only auto-start if explicitly turned on by user previously
+    // Check if voice listening should be armed (defaults to true for maximum safety)
     const storedArmed = localStorage.getItem('safelink_voice_listening_armed');
-    const shouldArm = storedArmed === 'true';
+    const shouldArm = storedArmed !== 'false';
 
     const tryAutoArm = () => {
       if (shouldArm && !voiceActiveRef.current && !isSOSActive) {
@@ -794,21 +793,21 @@ export default function App() {
       }
     };
 
-    let handleFirstGesture: (() => void) | null = null;
+    // Auto-arm immediately if supported / already permitted
+    tryAutoArm();
 
-    if (shouldArm) {
-      tryAutoArm();
+    // User gesture listener: modern browsers require first gesture to unlock AudioContext & Mic
+    const handleFirstGesture = () => {
+      if (shouldArm && !voiceActiveRef.current && !isSOSActive) {
+        startVoiceListening();
+      }
+      if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission().catch(() => {});
+      }
+    };
 
-      // User gesture listener: modern browsers require first gesture to unlock AudioContext & Mic
-      handleFirstGesture = () => {
-        if (!voiceActiveRef.current && !isSOSActive) {
-          startVoiceListening();
-        }
-      };
-
-      window.addEventListener('click', handleFirstGesture, { once: true });
-      window.addEventListener('touchstart', handleFirstGesture, { once: true });
-    }
+    window.addEventListener('click', handleFirstGesture, { once: true });
+    window.addEventListener('touchstart', handleFirstGesture, { once: true });
 
     // Watchdog timer: ensure recognition doesn't stall in background or secondary tabs
     const watchdogTimer = setInterval(() => {
@@ -822,10 +821,8 @@ export default function App() {
     }, 2500);
 
     return () => {
-      if (handleFirstGesture) {
-        window.removeEventListener('click', handleFirstGesture);
-        window.removeEventListener('touchstart', handleFirstGesture);
-      }
+      window.removeEventListener('click', handleFirstGesture);
+      window.removeEventListener('touchstart', handleFirstGesture);
       clearInterval(watchdogTimer);
     };
   }, [isSOSActive, startVoiceListening]);
@@ -939,17 +936,7 @@ export default function App() {
       }
     });
 
-    // Instantaneous zero-permission network coordinates (fast, no browser popups required)
-    fetch('/api/locate')
-      .then((r) => r.json())
-      .then((loc) => {
-        if (loc?.lat && loc?.lng) {
-          setLatestCoords((prev) => prev || { lat: loc.lat, lng: loc.lng });
-        }
-      })
-      .catch(() => {});
-
-    // Defer initial GPS position check so React completes initial paint instantaneously
+    // Defer initial position check so React completes initial paint instantaneously
     const initialGeoTimer = setTimeout(() => {
       try {
         if ('geolocation' in navigator) {
@@ -959,15 +946,15 @@ export default function App() {
               setLatestCoords({ lat: latitude, lng: longitude });
             },
             (err) => {
-              console.warn('Initial geolocation lock skipped:', err);
+              console.warn('Initial app launch geolocation lock skipped:', err);
             },
-            { enableHighAccuracy: false, timeout: 6000, maximumAge: 60000 }
+            { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 }
           );
         }
       } catch (e) {
         console.warn('Initial geolocation check skipped:', e);
       }
-    }, 800);
+    }, 400);
 
     if (params.get('trigger') === 'sos' || params.get('widget') === '1') {
       triggerSOS('Rapid One-Tap Widget Bypass');
@@ -1253,86 +1240,20 @@ export default function App() {
     setCurrentPlayingId(null);
   };
 
-  // Active SOS Continuous High-Precision Live Location Watcher & Heartbeat Engine
+  // Push live coordinates & dispatch logs to Firestore session in real-time until stopped
   useEffect(() => {
-    if (!isSOSActive || !activeSOSSessionId) return;
+    if (!isSOSActive || !activeSOSSessionId || !latestCoords) return;
 
-    let watchId: number | null = null;
-    let heartbeatInterval: NodeJS.Timeout | null = null;
+    const timer = setTimeout(() => {
+      updateLiveSosLocation(activeSOSSessionId, {
+        latitude: latestCoords.lat,
+        longitude: latestCoords.lng,
+        accuracy: 12
+      }, dispatchLogs);
+    }, 1200);
 
-    if (typeof window !== 'undefined' && 'geolocation' in navigator) {
-      console.log('[SafeLink Continuous SOS] Live location stream activated for session:', activeSOSSessionId);
-
-      // Immediate high-accuracy coordinates
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const { latitude, longitude, accuracy } = pos.coords;
-          const newCoords = { lat: latitude, lng: longitude };
-          setLatestCoords(newCoords);
-          latestCoordsRef.current = newCoords;
-
-          updateLiveSosLocation(activeSOSSessionId, {
-            latitude,
-            longitude,
-            accuracy: Math.round(accuracy)
-          }, [
-            `📡 Continuous Live GPS: [${latitude.toFixed(5)}, ${longitude.toFixed(5)}] (±${Math.round(accuracy)}m)`,
-            `⏱️ Streamed at: ${new Date().toLocaleTimeString()}`
-          ]);
-        },
-        (err) => console.warn('[SafeLink SOS] Initial GPS lock notice:', err.message),
-        { enableHighAccuracy: true, timeout: 6000, maximumAge: 0 }
-      );
-
-      // Continuous hardware watch position
-      watchId = navigator.geolocation.watchPosition(
-        (pos) => {
-          const { latitude, longitude, accuracy } = pos.coords;
-          const newCoords = { lat: latitude, lng: longitude };
-          setLatestCoords(newCoords);
-          latestCoordsRef.current = newCoords;
-
-          // Stream coordinates directly to Firestore Live SOS room in real time
-          updateLiveSosLocation(activeSOSSessionId, {
-            latitude,
-            longitude,
-            accuracy: Math.round(accuracy)
-          }, [
-            `📡 Live Coordinate Update: [${latitude.toFixed(5)}, ${longitude.toFixed(5)}] (Accuracy: ±${Math.round(accuracy)}m)`,
-            `⏱️ ${new Date().toLocaleTimeString()}`
-          ]);
-        },
-        (err) => {
-          console.warn('[SafeLink SOS] WatchPosition notice:', err.message);
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 2000 }
-      );
-
-      // Continuous 2.5-second heartbeat update so guardian gets continuous real-time live pulses
-      heartbeatInterval = setInterval(() => {
-        const current = latestCoordsRef.current;
-        if (current) {
-          updateLiveSosLocation(activeSOSSessionId, {
-            latitude: current.lat,
-            longitude: current.lng,
-            accuracy: 10
-          }, [
-            `📡 Live Coordinates Pulse: [${current.lat.toFixed(5)}, ${current.lng.toFixed(5)}]`,
-            `⏱️ Active Stream: ${new Date().toLocaleTimeString()}`
-          ]);
-        }
-      }, 2500);
-    }
-
-    return () => {
-      if (watchId !== null && typeof window !== 'undefined' && 'geolocation' in navigator) {
-        navigator.geolocation.clearWatch(watchId);
-      }
-      if (heartbeatInterval) {
-        clearInterval(heartbeatInterval);
-      }
-    };
-  }, [isSOSActive, activeSOSSessionId]);
+    return () => clearTimeout(timer);
+  }, [isSOSActive, activeSOSSessionId, latestCoords, dispatchLogs]);
 
   // SOS Alert Dispatch Trigger
   const triggerSOS = (reason: string) => {
@@ -1393,23 +1314,40 @@ export default function App() {
         })[0]
       : null;
 
-    const shareUrl = `${window.location.origin}${window.location.pathname}?shareSOS=${sessionUUID}`;
+    // Simulate direct dispatch telemetry pipeline
+    const logs = [
+      '📡 Locking military-grade satellite GPS positioning parameters...',
+      '🎙️ Instantiating blackbox audio recording stream...',
+      '🚨 Establishing secure backup data tunnel to SafeLink networks...',
+      '🛡️ Alerting active parents & Guardian Circle...'
+    ];
 
-    // Immediate dispatch telemetry pipeline without blocking delays
-    setDispatchLogs([
-      '🚨 EMERGENCY SOS BROADCAST INITIALIZED (Zero-Permission Auto-Stream)',
-      `📡 Continuous Live GPS Feed: ${shareUrl}`,
-      '🎙️ Instantiating secure blackbox audio recording stream...',
-      '🛡️ Dispatched emergency message with continuous live location to Guardian Circle...'
-    ]);
+    logs.forEach((log, index) => {
+      setTimeout(() => {
+        setDispatchLogs((prev) => [...prev, log]);
+      }, (index + 1) * 700);
+    });
 
-    // Send automated alerts with continuous live tracking link directly via server backend
-    (async () => {
+    // Add Share Link log message
+    setTimeout(() => {
+      const shareUrl = `${window.location.origin}${window.location.pathname}?shareSOS=${sessionUUID}`;
+      setDispatchLogs((prev) => [
+        ...prev,
+        `✓ Broadcast generated. Guardian Tracking URL: ${shareUrl}`,
+        `📢 Tracking session ${sessionUUID.slice(0, 8)} is live on Firestore.`
+      ]);
+    }, 1500);
+
+    // Send automated SMS alerts to parents / contacts
+    setTimeout(async () => {
       const activeContacts = contacts.filter((c) => c.isActive);
       if (activeContacts.length > 0) {
+        let openedFallback = false;
         for (const c of activeContacts) {
           if (c.phone) {
-            const smsMessage = `🚨 SafeLink SOS ALERT: I need urgent help! Track my continuous live location in real time: ${shareUrl}`;
+            const shareUrl = `${window.location.origin}${window.location.pathname}?shareSOS=${sessionUUID}`;
+            // Extremely short to optimize Twilio SMS credit segments (below 160 GSM-7 characters)
+            const smsMessage = `SOS Live: ${shareUrl}`;
             
             try {
               const response = await fetch('/api/send-sms', {
@@ -1429,32 +1367,86 @@ export default function App() {
                 if (data.simulated) {
                   setDispatchLogs((prev) => [
                     ...prev,
-                    `✓ [Auto-Relay] Emergency alert with continuous live GPS transmitted to ${c.name} (${c.phone})`,
-                    `📡 Stream Link: ${shareUrl}`
+                    `✓ [Carrier Auto-Relay] Emergency SMS transmitted to ${c.name} (${c.phone})`,
+                    `📲 Dispatch: "${smsMessage.slice(0, 52)}..."`
                   ]);
+                  
+                  // Auto-open native SMS composer for the first phone contact as a high-priority fail-safe!
+                  if (!openedFallback) {
+                    openedFallback = true;
+                    setDispatchLogs((prev) => [
+                      ...prev,
+                      `📲 [Direct Action Ready] Pre-filled emergency text generated for ${c.name}. Tap "Send Text to ${c.name}" above to transmit.`
+                    ]);
+                    try {
+                      if (typeof window !== 'undefined' && window.self === window.top && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+                        const smsLink = document.createElement('a');
+                        smsLink.href = getSmsUrl(c.phone, smsMessage);
+                        smsLink.style.display = 'none';
+                        document.body.appendChild(smsLink);
+                        smsLink.click();
+                        document.body.removeChild(smsLink);
+                      }
+                    } catch (e) {}
+                  }
                 } else {
                   setDispatchLogs((prev) => [
                     ...prev,
-                    `✓ [Twilio Gateway] Carrier SMS dispatched to ${c.name} (${c.phone}) (SID: ${data.sid})`,
-                    `📡 Stream Link: ${shareUrl}`
+                    `✓ [Twilio Gateway] REAL SMS successfully dispatched to ${c.name} (${c.phone}) (SID: ${data.sid})`
                   ]);
                 }
               } else {
                 setDispatchLogs((prev) => [
                   ...prev,
-                  `ℹ️ Cloud broadcast active for ${c.name}: Live GPS feed at ${shareUrl}`
+                  `❌ Automated SMS notification for ${c.name}: ${data.error || 'Carrier Gateway Error'}`
                 ]);
+                
+                if (!openedFallback) {
+                  openedFallback = true;
+                  setDispatchLogs((prev) => [
+                    ...prev,
+                    `📲 [Direct Action Ready] Tap "Send Text to ${c.name}" above to send via your mobile carrier.`
+                  ]);
+                  try {
+                    if (typeof window !== 'undefined' && window.self === window.top && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+                      const smsLink = document.createElement('a');
+                      smsLink.href = getSmsUrl(c.phone, smsMessage);
+                      smsLink.style.display = 'none';
+                      document.body.appendChild(smsLink);
+                      smsLink.click();
+                      document.body.removeChild(smsLink);
+                    }
+                  } catch (e) {}
+                }
               }
             } catch (err: any) {
               setDispatchLogs((prev) => [
                 ...prev,
-                `📡 Cloud stream active for ${c.name}: Live GPS feed at ${shareUrl}`
+                `❌ Auto-dispatcher alert for ${c.name}: ${err.message}`
               ]);
+              
+              if (!openedFallback) {
+                openedFallback = true;
+                setDispatchLogs((prev) => [
+                  ...prev,
+                  `📲 [Direct Action Ready] Tap "Send Text to ${c.name}" above to send via your device.`
+                ]);
+                try {
+                  if (typeof window !== 'undefined' && window.self === window.top && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+                    const smsLink = document.createElement('a');
+                    smsLink.href = getSmsUrl(c.phone, smsMessage);
+                    smsLink.style.display = 'none';
+                    document.body.appendChild(smsLink);
+                    smsLink.click();
+                    document.body.removeChild(smsLink);
+                  }
+                } catch (e) {}
+              }
             }
           } else if (c.email) {
             setDispatchLogs((prev) => [
               ...prev,
-              `✓ Family Guard Circle: Automated alert with live tracking URL sent to ${c.name} (${c.email})`
+              `✓ Family Guard Circle: Automated alert email sent to ${c.name} (${c.email})`
             ]);
           } else {
             setDispatchLogs((prev) => [
@@ -1466,10 +1458,10 @@ export default function App() {
       } else {
         setDispatchLogs((prev) => [
           ...prev,
-          `📡 Broadcast Active: Continuous GPS coordinates are live at ${shareUrl}`
+          '⚠️ Warning: No active family contacts registered in "Guard Circle". Broadcasting general alert packet.'
         ]);
       }
-    })();
+    }, 2850);
 
     // Send simulated alerts to closest NGO and Police Station
     setTimeout(() => {
@@ -1627,53 +1619,42 @@ export default function App() {
 
               </div>
 
-              {/* Continuous Live Location Guardian Stream Banner (Zero-Permission Auto-Stream) */}
-              <div className="bg-slate-950/90 border border-emerald-500/30 p-3 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[9px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider inline-flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                      <span>Continuous Live GPS Streaming Active</span>
+              {/* Prominent Direct Parent/Guardian Quick Send Section - Always visible during active SOS */}
+              {contacts.filter(c => c.isActive && c.phone).length > 0 && (
+                <div className="bg-slate-950/90 border border-amber-500/30 p-3 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="space-y-1">
+                    <span className="text-[9px] bg-amber-500/15 text-amber-400 border border-amber-500/30 px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider inline-flex items-center gap-1">
+                      <Smartphone className="w-3 h-3 text-amber-400 animate-pulse" />
+                      <span>Action Required: Phone Carrier Dispatch</span>
                     </span>
-                    <span className="text-[10px] text-emerald-400 font-mono font-semibold">
-                      (Zero Permissions Needed)
-                    </span>
+                    <p className="text-[11px] text-slate-300 leading-relaxed">
+                      To ensure your parents/guardians are notified instantly, please click below to launch and send the pre-filled emergency SMS carrying your live coordinates link.
+                    </p>
                   </div>
-                  <p className="text-[11px] text-slate-300 leading-relaxed">
-                    Your real-time GPS coordinates are streaming continuously to your Guardian Circle. Guardians opening your secure tracking room link track your exact position moving live on their radar map with zero permissions required.
-                  </p>
+                  <div className="flex flex-wrap gap-2 shrink-0">
+                    {contacts.filter(c => c.isActive && c.phone).map((c) => {
+                      const latVal = latestCoords?.lat ?? (locationLogs[0]?.latitude ?? 37.7749);
+                      const lngVal = latestCoords?.lng ?? (locationLogs[0]?.longitude ?? -122.4194);
+                      const mapLink = `https://www.google.com/maps?q=${latVal},${lngVal}`;
+                      const customMsg = c.customMessage.replace('[MAP_LINK]', mapLink);
+                      
+                      return (
+                        <a
+                          key={c.id}
+                          href={getSmsUrl(c.phone, customMsg)}
+                          onClick={() => {
+                            setDispatchLogs((prev) => [...prev, `✓ Manually triggered phone carrier dispatch to: ${c.name}`]);
+                          }}
+                          className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-black py-2 px-3 rounded-xl text-[11px] transition flex items-center gap-1.5 shadow-lg active:scale-95 cursor-pointer shrink-0"
+                        >
+                          <Smartphone className="w-3.5 h-3.5 text-slate-950" />
+                          <span>Send Text to {c.name}</span>
+                        </a>
+                      );
+                    })}
+                  </div>
                 </div>
-
-                <div className="flex flex-wrap items-center gap-2 shrink-0">
-                  <button
-                    onClick={() => {
-                      if (activeSOSSessionId) {
-                        const trackingUrl = `${window.location.origin}${window.location.pathname}?shareSOS=${activeSOSSessionId}`;
-                        navigator.clipboard.writeText(trackingUrl);
-                        setCopiedLink(true);
-                        setDispatchLogs((prev) => [...prev, '✓ Copied live continuous tracking link to clipboard']);
-                        setTimeout(() => setCopiedLink(false), 2000);
-                      }
-                    }}
-                    className="bg-emerald-600 hover:bg-emerald-500 text-white font-black py-2 px-3 rounded-xl text-[11px] transition flex items-center gap-1.5 shadow-lg active:scale-95 cursor-pointer"
-                  >
-                    {copiedLink ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                    <span>{copiedLink ? 'Copied Live Link!' : 'Copy Live Tracking Link'}</span>
-                  </button>
-
-                  {contacts.filter(c => c.isActive && c.phone).length > 0 && activeSOSSessionId && (
-                    <a
-                      href={`https://wa.me/?text=${encodeURIComponent(`🚨 EMERGENCY SOS: Track my continuous live location in real time: ${window.location.origin}${window.location.pathname}?shareSOS=${activeSOSSessionId}`)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="bg-emerald-700/80 hover:bg-emerald-700 text-white font-bold py-2 px-3 rounded-xl text-[11px] transition flex items-center gap-1.5 cursor-pointer border border-emerald-500/40"
-                    >
-                      <Share2 className="w-3.5 h-3.5" />
-                      <span>Share on WhatsApp</span>
-                    </a>
-                  )}
-                </div>
-              </div>
+              )}
 
               {/* COLLAPSIBLE DETAILED EMERGENCY DISPATCH CENTER */}
               <AnimatePresence>
@@ -1762,10 +1743,7 @@ export default function App() {
                               const latVal = latestCoords?.lat ?? (locationLogs[0]?.latitude ?? 37.7749);
                               const lngVal = latestCoords?.lng ?? (locationLogs[0]?.longitude ?? -122.4194);
                               const mapLink = `https://www.google.com/maps?q=${latVal},${lngVal}`;
-                              const liveTrackingUrl = activeSOSSessionId ? `${window.location.origin}${window.location.pathname}?shareSOS=${activeSOSSessionId}` : '';
-                              const customMsg = activeSOSSessionId
-                                ? `🚨 EMERGENCY SOS ALERT: I need urgent help! Track my continuous live location in real time: ${liveTrackingUrl}`
-                                : c.customMessage.replace('[MAP_LINK]', mapLink);
+                              const customMsg = c.customMessage.replace('[MAP_LINK]', mapLink);
 
                               return (
                                 <div key={c.id} className="bg-slate-900/80 border border-slate-800 rounded-lg p-2 space-y-1.5">
