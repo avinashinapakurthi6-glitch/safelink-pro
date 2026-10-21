@@ -29,11 +29,11 @@ service cloud.firestore {
       // Prevent bulk querying or scanning active emergency rooms
       allow list: if false;
       
-      // Permit creation of new session documents by authenticated users or guest fallback
-      allow create: if isSignedIn() || request.resource.data.userId == 'guest-user';
+      // Permit creation of new session documents by anyone triggering emergency SOS
+      allow create: if true;
       
       // Permit location & logs update during active tracking by session initiator
-      allow update: if isSignedIn() || resource.data.userId == 'guest-user';
+      allow update: if true;
     }
 
     // Rules for community-wide alerts
